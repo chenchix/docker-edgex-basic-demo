@@ -1,0 +1,272 @@
+# /*******************************************************************************
+#  * Copyright 2018 Dell Inc.
+#  *
+#  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+#  * in compliance with the License. You may obtain a copy of the License at
+#  *
+#  * http://www.apache.org/licenses/LICENSE-2.0
+#  *
+#  * Unless required by applicable law or agreed to in writing, software distributed under the License
+#  * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+#  * or implied. See the License for the specific language governing permissions and limitations under
+#  * the License.
+#  *
+#  * @author: Jim White, Dell
+#  * EdgeX Foundry, California Preview, version 0.5.0
+#  * added: Feb 3, 2018
+#  * updated:  Feb 12, 2018 - added env to export services to allow them to work properly
+#  *******************************************************************************/
+
+version: '3'
+volumes:
+  db-data:
+  log-data:
+  consul-config:
+  consul-data:
+
+services:
+  volume:
+    image: chenchix/volume-arm64
+    container_name: edgex-files
+    networks:
+      - edgex-network
+    volumes:
+      - db-data:/data/db
+      - log-data:/edgex/logs
+      - consul-config:/consul/config
+      - consul-data:/consul/data
+
+  config-seed:                                                                    
+    image: nexus3.edgexfoundry.org:10004/docker-core-config-seed-go-arm64                                         
+    ports:   
+      - "8300:8300"                                                                                  
+      - "8400:8400"                                                         
+      - "8500:8500"     
+      - "8600:8600"                            
+    container_name: edgex-config-seed
+    hostname: edgex-core-consul                                                                       
+    networks:                                                                                        
+      edgex-network:                                                                                  
+        aliases:        
+            - edgex-core-consul                                         
+    volumes:                        
+      - db-data:/data/db                                         
+      - log-data:/edgex/lgos
+      - consul-config:/consul/config
+      - consul-data:/consul/data
+    depends_on:
+      - volume
+
+  mongo:
+    image: chenchix/mongo-arm64
+    ports:
+      - "27017:27017"
+    container_name: edgex-mongo
+    hostname: edgex-mongo
+    networks:
+      - edgex-network
+    volumes:
+      - db-data:/data/db
+      - log-data:/edgex/logs
+      - consul-config:/consul/config
+      - consul-data:/consul/data
+    depends_on:
+      - volume
+
+  logging:
+    image: nexus3.edgexfoundry.org:10003/docker-support-logging-go-arm64:03a8236-0.5.2
+    ports:
+      - "48061:48061"
+    container_name: edgex-support-logging
+    hostname: edgex-support-logging
+    networks:
+      edgex-network:
+        aliases:
+            - edgex-support-logging
+    volumes:
+      - db-data:/data/db
+      - log-data:/edgex/logs
+      - consul-config:/consul/config
+      - consul-data:/consul/data
+    depends_on:
+      - config-seed
+      - mongo
+      - volume
+
+  # notifications:                                                            
+  #   image: nexus3.edgexfoundry.org:10003/docker-support-notifications
+  #   ports:                                     
+  #     - "48060:48060"
+  #   container_name: edgex-support-notifications                                                       
+  #   hostname: edgex-support-notifications                                                            
+  #   networks:                                                                                         
+  #     - edgex-network
+  #   volumes:
+  #     - db-data:/data/db     
+  #     - log-data:/edgex/logs                         
+  #   depends_on:                                                                   
+  #     - logging              
+    
+  metadata:                                                                                          
+    image: nexus3.edgexfoundry.org:10003/docker-core-metadata-go-arm64:03a8236-0.5.2
+    ports:
+      - "48081:48081"                          
+    container_name: edgex-core-metadata
+    hostname: edgex-core-metadata                                                                     
+    networks:                                                                                        
+      - edgex-network                                                                                 
+    volumes:     
+      - db-data:/data/db
+      - log-data:/edgex/logs 
+      - consul-config:/consul/config                 
+      - consul-data:/consul/data
+    depends_on:                                                                          
+      - logging                                                                    
+
+  data:     
+    image: nexus3.edgexfoundry.org:10003/docker-core-data-go-arm64:03a8236-0.5.2
+    ports:
+      - "48080:48080"
+      - "5563:5563"
+    container_name: edgex-core-data
+    hostname: edgex-core-data
+    networks:
+      - edgex-network
+    volumes:                    
+      - db-data:/data/db       
+      - log-data:/edgex/logs
+      - consul-config:/consul/config
+      - consul-data:/consul/data
+    depends_on:         
+      - logging             
+                                    
+  command:                      
+    image: nexus3.edgexfoundry.org:10003/docker-core-command-go-arm64:03a8236-0.5.2
+    ports:    
+      - "48082:48082"                     
+    container_name: edgex-core-command
+    hostname: edgex-core-command
+    networks:      
+      - edgex-network
+    volumes:       
+      - db-data:/data/db             
+      - log-data:/edgex/logs   
+      - consul-config:/consul/config
+      - consul-data:/consul/data
+    depends_on: 
+      - metadata               
+
+# scheduler container does not come up on Consul - bug fix in the works.
+  # scheduler:                
+  #   image: nexus3.edgexfoundry.org:10003/docker-support-scheduler
+  #   ports:                      
+  #     - "48085:48085"
+  #   container_name: edgex-support-scheduler
+  #   hostname: edgex-support-scheduler
+  #   networks:
+  #     - edgex-network          
+  #   volumes:
+  #     - db-data:/data/db
+  #     - log-data:/edgex/logs   
+  #     - consul-config:/consul/config
+  #     - consul-data:/consul/data
+  #   depends_on:      
+  #     - metadata
+                        
+  export-client:
+    image: nexus3.edgexfoundry.org:10003/docker-export-client-go-arm64:03a8236-0.5.2
+    ports:
+      - "48071:48071"
+    container_name: edgex-export-client
+    hostname: edgex-export-client
+    networks:
+      - edgex-network
+    volumes:
+      - db-data:/data/db
+      - log-data:/edgex/logs
+      - consul-config:/consul/config
+      - consul-data:/consul/data
+    depends_on:
+      - data
+    environment:      
+      - EXPORT_CLIENT_MONGO_URL=edgex-mongo
+      - EXPORT_CLIENT_DISTRO_HOST=export-distro
+      - EXPORT_CLIENT_CONSUL_HOST=edgex-config-seed
+
+  export-distro:
+    image: nexus3.edgexfoundry.org:10003/docker-export-distro-go-arm64:03a8236-0.5.2
+    ports:
+      - "48070:48070"
+    container_name: edgex-export-distro
+    hostname: edgex-export-distro
+    networks:
+      - edgex-network
+    volumes:
+      - db-data:/data/db
+      - log-data:/edgex/logs
+      - consul-config:/consul/config
+      - consul-data:/consul/data
+    depends_on:
+      - export-client
+    environment:
+      - EXPORT_DISTRO_CLIENT_HOST=export-client
+      - EXPORT_DISTRO_DATA_HOST=edgex-core-data
+      - EXPORT_DISTRO_CONSUL_HOST=edgex-config-seed
+      - EXPORT_DISTRO_MQTTS_CERT_FILE=none
+      - EXPORT_DISTRO_MQTTS_KEY_FILE=none
+
+
+  ui:
+    image: chenchix/edgex-ui-go
+    ports:
+      - "4000:4000"
+      - "8080:8080"
+    container_name: edgex-ui-go
+    hostname: edgex-ui-go
+    networks:
+      - edgex-network
+      
+  # rulesengine:                                 
+  #   image: nexus3.edgexfoundry.org:10003/docker-support-rulesengine
+  #   ports:                                                                                            
+  #     - "48075:48075"                                                                                
+  #   container_name: edgex-support-rulesengine                                                         
+  #   hostname: edgex-support-rulesengine
+  #   networks:
+  #     - edgex-network        
+  #   volumes:                                         
+  #     - db-data:/data/db            
+  #     - log-data:/edgex/logs                                                             
+  #     - consul-config:/consul/config                                               
+  #     - consul-data:/consul/data
+  #   depends_on:
+  #     - export-distro                                                   
+            
+#################################################################
+# Device Services
+#################################################################
+                                           
+  # device-virtual:                    
+  #   image: nexus3.edgexfoundry.org:10003/docker-device-virtual
+  #   ports:                      
+  #     - "49990:49990"          
+  #   container_name: edgex-device-virtual
+  #   hostname: edgex-device-virtual
+  #   networks:                       
+  #     - edgex-network           
+  #   volumes:                
+  #     - db-data:/data/db            
+  #     - log-data:/edgex/logs    
+  #     - consul-config:/consul/config
+  #     - consul-data:/consul/data                                                    
+  #   depends_on:                           
+  #     - data         
+  #     - command                        
+  #     - scheduler                
+  #     - notifications
+                     
+                                     
+networks:                      
+  edgex-network:            
+    driver: "bridge"                
+...                       
